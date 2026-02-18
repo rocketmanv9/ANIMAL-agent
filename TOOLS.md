@@ -51,6 +51,10 @@ Logging:
 - Every executed action should be acknowledged with what was done and the result.
 - Never claim an action happened if it did not run.
 
+Local Utility Scripts:
+- `tools/drive_ops.py` — fast Google Drive CRUD wrapper with ID cache.
+- `tools/weather_ops.py` — fast weather lookup (city/address) via wttr.in with short cache.
+
 High-Risk Guardrails:
 - EXECUTE is always required for destructive, external, security-sensitive, or service-impacting actions (e.g., restarts, deletes, production config changes).
 - No silent high-risk execution.

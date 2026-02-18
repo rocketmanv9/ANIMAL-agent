@@ -1,23 +1,30 @@
 # WEATHER_OPS.md
 
-Fast city/address weather lookup (no API key) using wttr.in.
+Fast weather lookup for city/address/hour.
 
 ## Script
 - `tools/weather_ops.py`
+- Source: Open-Meteo (free, no API key)
+- Caching:
+  - forecast cache: 10 min
+  - geocode cache: 30 days
 
 ## Usage
 ```bash
-# Current + today summary
+# Current-ish weather
 python3 tools/weather_ops.py "Seattle"
 
-# Current + tomorrow summary
-python3 tools/weather_ops.py "Vancouver, WA" --tomorrow
+# Specific time
+python3 tools/weather_ops.py "Vancouver, WA" --at "2026-02-20T08:00"
 
-# JSON output
-python3 tools/weather_ops.py "Portland" --json
+# JSON
+python3 tools/weather_ops.py "Portland" --at "2026-02-20T08:00" --json
 ```
 
-## Notes
-- Works with city names and most addresses.
-- Uses short cache (10 min) at `.openclaw/weather_cache.json` for speed.
-- Source: wttr.in (`?format=j1`)
+## Fast aliases
+Built-in direct coordinate aliases for:
+- Vancouver / Vancouver WA / Vancouver Washington
+- Seattle
+- Portland
+
+This avoids geocoding round-trips for common requests.

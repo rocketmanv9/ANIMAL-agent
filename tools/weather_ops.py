@@ -4,115 +4,163 @@ import json
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 CACHE_PATH = Path('/home/grant/.openclaw/workspace/.openclaw/weather_cache.json')
-TTL = 600  # 10 min
+GEO_CACHE_PATH = Path('/home/grant/.openclaw/workspace/.openclaw/weather_geo_cache.json')
+TTL = 600  # 10 min forecast cache
+GEO_TTL = 86400 * 30  # 30 days geocode cache
+
+# Fast path aliases for common requests (can expand over time)
+ALIASES = {
+    'vancouver': (45.6387, -122.6615, 'Vancouver, WA'),
+    'vancouver wa': (45.6387, -122.6615, 'Vancouver, WA'),
+    'vancouver washington': (45.6387, -122.6615, 'Vancouver, WA'),
+    'seattle': (47.6062, -122.3321, 'Seattle, WA'),
+    'portland': (45.5152, -122.6784, 'Portland, OR'),
+}
 
 
-def load_cache():
-    if not CACHE_PATH.exists():
+def _load(path: Path):
+    if not path.exists():
         return {}
     try:
-        return json.loads(CACHE_PATH.read_text())
+        return json.loads(path.read_text())
     except Exception:
         return {}
 
 
-def save_cache(c):
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(json.dumps(c, indent=2))
+def _save(path: Path, obj):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2))
 
 
 def fetch_json(url: str):
-    req = urllib.request.Request(url, headers={"User-Agent": "ANIMAL-weather/1.0"})
-    with urllib.request.urlopen(req, timeout=12) as r:
+    req = urllib.request.Request(url, headers={"User-Agent": "ANIMAL-weather/2.0"})
+    with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read().decode('utf-8', errors='replace'))
 
 
-def get_forecast(location: str):
-    loc = location.strip()
-    key = f"forecast:{loc.lower()}"
-    cache = load_cache()
-    now = time.time()
-    if key in cache and now - cache[key].get('ts', 0) < TTL:
-        return cache[key]['data'], True
+def geocode(location: str):
+    key = location.strip().lower()
 
-    q = urllib.parse.quote(loc.replace(' ', '+'))
-    url = f"https://wttr.in/{q}?format=j1"
+    if key in ALIASES:
+        lat, lon, label = ALIASES[key]
+        return lat, lon, label, True
+
+    cache = _load(GEO_CACHE_PATH)
+    hit = cache.get(key)
+    if hit and time.time() - hit.get('ts', 0) < GEO_TTL:
+        return hit['lat'], hit['lon'], hit.get('label', location), True
+
+    # Open-Meteo geocoding (fast, free)
+    geo_url = (
+        'https://geocoding-api.open-meteo.com/v1/search?name=' +
+        urllib.parse.quote(location) +
+        '&count=1&language=en&format=json'
+    )
+    data = fetch_json(geo_url)
+    results = data.get('results') or []
+    if not results:
+        raise RuntimeError(f'Could not geocode location: {location}')
+
+    r = results[0]
+    lat, lon = r['latitude'], r['longitude']
+    label = ', '.join([x for x in [r.get('name'), r.get('admin1'), r.get('country')] if x])
+
+    cache[key] = {'lat': lat, 'lon': lon, 'label': label, 'ts': time.time()}
+    _save(GEO_CACHE_PATH, cache)
+    return lat, lon, label, False
+
+
+def forecast(lat, lon, timezone='America/Los_Angeles'):
+    key = f"fc:{lat:.4f},{lon:.4f}:{timezone}"
+    cache = _load(CACHE_PATH)
+    hit = cache.get(key)
+    if hit and time.time() - hit.get('ts', 0) < TTL:
+        return hit['data'], True
+
+    url = (
+        f'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}'
+        '&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m'
+        '&temperature_unit=celsius&wind_speed_unit=kmh'
+        f'&timezone={urllib.parse.quote(timezone)}&forecast_days=7'
+    )
     data = fetch_json(url)
-    cache[key] = {"ts": now, "data": data}
-    save_cache(cache)
+    cache[key] = {'ts': time.time(), 'data': data}
+    _save(CACHE_PATH, cache)
     return data, False
 
 
-def summarize_current(data, location):
-    cur = (data.get('current_condition') or [{}])[0]
-    w = (cur.get('weatherDesc') or [{"value": "Unknown"}])[0].get('value', 'Unknown')
-    return {
-        "location": location,
-        "condition": w,
-        "temp_c": cur.get('temp_C'),
-        "feelslike_c": cur.get('FeelsLikeC'),
-        "humidity_pct": cur.get('humidity'),
-        "wind_kmph": cur.get('windspeedKmph'),
-        "wind_dir": cur.get('winddir16Point'),
+def weather_code_desc(code: int):
+    mapping = {
+        0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+        45: 'Fog', 48: 'Rime fog',
+        51: 'Light drizzle', 53: 'Drizzle', 55: 'Dense drizzle',
+        61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+        71: 'Light snow', 73: 'Snow', 75: 'Heavy snow',
+        80: 'Rain showers', 81: 'Rain showers', 82: 'Violent rain showers',
+        95: 'Thunderstorm',
     }
+    return mapping.get(code, f'Weather code {code}')
 
 
-def summarize_day(data, day_index=0):
-    days = data.get('weather') or []
-    if day_index >= len(days):
-        return None
-    d = days[day_index]
-    astro = (d.get('astronomy') or [{}])[0]
-    hourly = d.get('hourly') or []
-    rain_max = 0
-    for h in hourly:
-        try:
-            rain_max = max(rain_max, int(h.get('chanceofrain', '0') or 0))
-        except Exception:
-            pass
-    return {
-        "date": d.get('date'),
-        "max_c": d.get('maxtempC'),
-        "min_c": d.get('mintempC'),
-        "avg_c": d.get('avgtempC'),
-        "sunrise": astro.get('sunrise'),
-        "sunset": astro.get('sunset'),
-        "max_rain_chance_pct": rain_max,
-    }
+def nearest_hour_index(times, target_iso):
+    target = datetime.fromisoformat(target_iso)
+    best_i, best_diff = 0, 10**18
+    for i, t in enumerate(times):
+        dt = datetime.fromisoformat(t)
+        diff = abs((dt - target).total_seconds())
+        if diff < best_diff:
+            best_i, best_diff = i, diff
+    return best_i
 
 
 def main():
-    ap = argparse.ArgumentParser(description='Fast weather lookup via wttr.in (no API key)')
-    ap.add_argument('location', help='City, address, or place')
-    ap.add_argument('--tomorrow', action='store_true', help='Return tomorrow summary')
-    ap.add_argument('--json', action='store_true', help='JSON output')
+    ap = argparse.ArgumentParser(description='Fast weather lookup (city/address/hour)')
+    ap.add_argument('location', help='City or address')
+    ap.add_argument('--at', help='Local time: YYYY-MM-DDTHH:MM (e.g., 2026-02-20T08:00)')
+    ap.add_argument('--timezone', default='America/Los_Angeles')
+    ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
 
-    data, cached = get_forecast(args.location)
-    out = {
-        "ok": True,
-        "source": "wttr.in",
-        "cached": cached,
-        "current": summarize_current(data, args.location),
-    }
-    if args.tomorrow:
-        out["tomorrow"] = summarize_day(data, day_index=1)
+    lat, lon, label, geo_cached = geocode(args.location)
+    data, fc_cached = forecast(lat, lon, args.timezone)
+
+    times = data['hourly']['time']
+    if args.at:
+        idx = nearest_hour_index(times, args.at)
     else:
-        out["today"] = summarize_day(data, day_index=0)
+        # nearest to now in local tz by string compare fallback
+        now_local = datetime.now().strftime('%Y-%m-%dT%H:00')
+        idx = nearest_hour_index(times, now_local)
+
+    out = {
+        'ok': True,
+        'location': label,
+        'lat': lat,
+        'lon': lon,
+        'time': times[idx],
+        'condition': weather_code_desc(int(data['hourly']['weather_code'][idx])),
+        'temp_c': data['hourly']['temperature_2m'][idx],
+        'feels_c': data['hourly']['apparent_temperature'][idx],
+        'rain_chance_pct': data['hourly']['precipitation_probability'][idx],
+        'wind_kmh': data['hourly']['wind_speed_10m'][idx],
+        'wind_dir_deg': data['hourly']['wind_direction_10m'][idx],
+        'geo_cached': geo_cached,
+        'forecast_cached': fc_cached,
+        'source': 'open-meteo'
+    }
 
     if args.json:
         print(json.dumps(out, indent=2))
-        return
-
-    c = out['current']
-    print(f"{c['location']}: {c['condition']}, {c['temp_c']}°C (feels {c['feelslike_c']}°C), humidity {c['humidity_pct']}%, wind {c['wind_dir']} {c['wind_kmph']} km/h")
-    d = out['tomorrow'] if args.tomorrow else out['today']
-    if d:
-        label = 'Tomorrow' if args.tomorrow else 'Today'
-        print(f"{label} ({d['date']}): {d['min_c']}–{d['max_c']}°C, rain chance up to {d['max_rain_chance_pct']}%, sunrise {d['sunrise']}, sunset {d['sunset']}")
+    else:
+        print(
+            f"{out['location']} @ {out['time']}: {out['condition']}, "
+            f"{out['temp_c']}°C (feels {out['feels_c']}°C), "
+            f"rain {out['rain_chance_pct']}%, wind {out['wind_kmh']} km/h"
+        )
 
 
 if __name__ == '__main__':

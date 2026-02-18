@@ -9,6 +9,8 @@ _Learn about the person you're helping. Update this as you go._
 - **Notes:**
   - Prefers email sends to auto-generate a subject from body content when he does not provide one.
   - If he provides a subject, use it exactly.
+  - Wants sender-account aware emailing (personal vs work) and a clarification question when sender is ambiguous.
+  - Wants this footer appended to every outgoing email unless he says otherwise: `this email was sent by personal AI agent`.
 
 ## Context
 

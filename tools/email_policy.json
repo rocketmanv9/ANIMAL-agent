@@ -1,0 +1,14 @@
+{
+  "defaultAccount": "grant.m.anderson2021@gmail.com",
+  "accounts": {
+    "personal": "grant.m.anderson2021@gmail.com",
+    "work": "grant@acmoate.com"
+  },
+  "footer": "this email was sent by personal AI agent",
+  "prioritySenders": [
+    "@acmoate.com",
+    "redfin.com",
+    "rmlsweb.com",
+    "accounts@e-file.com"
+  ]
+}

@@ -55,6 +55,8 @@ Local Utility Scripts:
 - `tools/drive_ops.py` — fast Google Drive CRUD wrapper with ID cache.
 - `tools/weather_ops.py` — fast weather lookup (city/address/hour) via Open-Meteo with short cache.
 - `tools/email_brief.py` — fast Gmail triage summary (`read_now` / `check_soon` / `skip_or_batch`).
+- `tools/email_send.py` — policy-aware Gmail send helper (auto-subject + sender routing + footer).
+- `tools/daily_brief.py` — fast combined daily brief (email triage + weather snapshot).
 
 Email Sending Rule (Grant preference):
 - If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.

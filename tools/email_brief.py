@@ -3,9 +3,11 @@ import argparse
 import json
 import subprocess
 from datetime import datetime
+from pathlib import Path
 
 GOG = "/mnt/c/Users/grant/bin/gogcli/gog.exe"
 DEFAULT_ACCOUNT = "grant.m.anderson2021@gmail.com"
+POLICY_PATH = Path('/home/grant/.openclaw/workspace/tools/email_policy.json')
 
 PROMO_HINTS = {
     "sale", "discount", "deal", "unsubscribe", "newsletter", "promo", "promotion", "offer", "coupon"
@@ -22,7 +24,17 @@ def run(args):
     return p.stdout
 
 
-def score(thread):
+def load_policy():
+    if POLICY_PATH.exists():
+        try:
+            return json.loads(POLICY_PATH.read_text())
+        except Exception:
+            pass
+    return {"prioritySenders": []}
+
+
+def score(thread, priority_senders=None):
+    priority_senders = priority_senders or []
     labels = set(thread.get("labels", []))
     subj = (thread.get("subject") or "").lower()
     sender = (thread.get("from") or "").lower()
@@ -44,6 +56,12 @@ def score(thread):
     if "no-reply" in sender or "noreply" in sender:
         s -= 1
 
+    for pat in priority_senders:
+        p = (pat or '').lower().strip()
+        if p and p in sender:
+            s += 3
+            break
+
     return s
 
 
@@ -63,13 +81,16 @@ def main():
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
+    policy = load_policy()
+    priority_senders = policy.get('prioritySenders', [])
+
     raw = run([GOG, "-a", args.account, "-j", "gmail", "search", args.query, "--max", str(args.max)])
     data = json.loads(raw)
     threads = data.get("threads", [])
 
     ranked = []
     for t in threads:
-        sc = score(t)
+        sc = score(t, priority_senders=priority_senders)
         ranked.append({
             "id": t.get("id"),
             "date": t.get("date"),

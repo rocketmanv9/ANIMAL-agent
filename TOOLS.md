@@ -57,6 +57,7 @@ Local Utility Scripts:
 - `tools/email_brief.py` — fast Gmail triage summary (`read_now` / `check_soon` / `skip_or_batch`).
 - `tools/email_send.py` — policy-aware Gmail send helper (auto-subject + sender routing + footer).
 - `tools/daily_brief.py` — fast combined daily brief (email triage + weather snapshot).
+- `tools/mission_brief.py` — daily mission briefing (calendar lookahead + focus events + inbox triage).
 
 Email Sending Rule (Grant preference):
 - If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.

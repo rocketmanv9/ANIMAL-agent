@@ -53,7 +53,12 @@ Logging:
 
 Local Utility Scripts:
 - `tools/drive_ops.py` — fast Google Drive CRUD wrapper with ID cache.
-- `tools/weather_ops.py` — fast weather lookup (city/address) via wttr.in with short cache.
+- `tools/weather_ops.py` — fast weather lookup (city/address/hour) via Open-Meteo with short cache.
+
+Email Sending Rule (Grant preference):
+- If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.
+- If Grant specifies a subject, use it exactly as provided.
+- Avoid identical subject/body unless Grant explicitly asks for that format.
 
 High-Risk Guardrails:
 - EXECUTE is always required for destructive, external, security-sensitive, or service-impacting actions (e.g., restarts, deletes, production config changes).

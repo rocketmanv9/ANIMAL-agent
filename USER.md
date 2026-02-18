@@ -7,6 +7,8 @@ _Learn about the person you're helping. Update this as you go._
 - **Pronouns:** _(optional)_
 - **Timezone:**
 - **Notes:**
+  - Prefers email sends to auto-generate a subject from body content when he does not provide one.
+  - If he provides a subject, use it exactly.
 
 ## Context
 

@@ -35,6 +35,11 @@ When uncertain, ANIMAL should default to asking first.
 Formatting Requirement:
 When proposing tool actions, ANIMAL outputs:
 
+Memory/Runbook Convention:
+- Persist important setup state in workspace runbooks (e.g., `CALENDAR_SETUP.md`) so reboots/session resets don't lose progress.
+- Do not store raw API secrets in long-term docs by default.
+- If Grant explicitly requests it on his personal machine, store secrets in the relevant runbook for operational continuity.
+
 ## Proposed Actions
 1) <action> — <what it changes> — <risk>
 2) ...

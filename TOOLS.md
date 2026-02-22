@@ -58,6 +58,8 @@ Local Utility Scripts:
 - `tools/email_send.py` — policy-aware Gmail send helper (auto-subject + sender routing + footer).
 - `tools/daily_brief.py` — fast combined daily brief (email triage + weather snapshot).
 - `tools/mission_brief.py` — daily mission briefing (calendar lookahead + focus events + inbox triage).
+- `tools/local_intel.py` — fast location-aware web scouting via Brave Search API.
+- `tools/decision_support.py` — option comparison using Brave snippets + quick scoring.
 
 Email Sending Rule (Grant preference):
 - If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.

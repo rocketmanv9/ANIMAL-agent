@@ -34,8 +34,22 @@ Recent test result:
 - bed_temper: ~40.4°C
 - wifi_signal: -36dBm
 
+## Camera probing (implemented)
+Read-only camera probe script:
+
+```bash
+python3 tools/bambu_camera_probe.py --ip 192.168.0.111
+```
+
+Recent result:
+- ping: ok
+- ports: 6000/open, 3000/open, 554/closed, 8554/closed
+- HTTP probe on 3000/6000 paths: no direct endpoint response
+- RTSP candidate endpoints listed for next validation step
+
 ## Next build steps (safe)
 1. Add printer profile JSON (`tools/bambu_profile.json`) with IP + access code + serial placeholder.
 2. Add "preflight" script that refuses to run if printer is currently printing.
 3. Add optional slice-export automation via Bambu Studio CLI.
 4. Add guarded print-submit flow (explicit EXECUTE required).
+5. Add authenticated camera snapshot pull once stream endpoint is confirmed.

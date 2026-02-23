@@ -63,6 +63,7 @@ Local Utility Scripts:
 - `tools/bambu_probe.py` — read-only Bambu readiness probe (network + Studio CLI).
 - `tools/bambu_status.py` — read-only Bambu MQTT status poll (gcode state/temps/progress).
 - `tools/bambu_camera_probe.py` — read-only camera endpoint probe for Bambu LAN setup.
+- `tools/bambu_cloud_probe.sh` — cloud-mode readiness probe using `bambu-cli` auth path.
 
 Email Sending Rule (Grant preference):
 - If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.

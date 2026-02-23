@@ -60,6 +60,9 @@ Local Utility Scripts:
 - `tools/mission_brief.py` — daily mission briefing (calendar lookahead + focus events + inbox triage).
 - `tools/local_intel.py` — fast location-aware web scouting via Brave Search API.
 - `tools/decision_support.py` — option comparison using Brave snippets + quick scoring.
+- `tools/bambu_probe.py` — read-only Bambu readiness probe (network + Studio CLI).
+- `tools/bambu_status.py` — read-only Bambu MQTT status poll (gcode state/temps/progress).
+- `tools/bambu_camera_probe.py` — read-only camera endpoint probe for Bambu LAN setup.
 
 Email Sending Rule (Grant preference):
 - If Grant asks to send an email and does NOT specify a subject, generate a short, clear subject from the body intent.

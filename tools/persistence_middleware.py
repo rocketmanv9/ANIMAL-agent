@@ -268,6 +268,127 @@ class PersistenceClient:
         self._local_write_atomic(st)
 
 
+    def list_incomplete_tasks(self) -> List[dict]:
+        statuses = ('open', 'in_progress', 'blocked')
+        if self._has_remote():
+            q = parse.urlencode({
+                'select': 'id,title,status,task_type,priority,due_at,metadata,updated_at',
+                'status': 'in.(open,in_progress,blocked)',
+                'order': 'priority.asc,updated_at.asc',
+            }, safe='().,')
+            return self._rest('GET', 'tasks', query=q) or []
+
+        st = self._local_read()
+        return [t for t in st['tasks'] if t.get('status') in statuses]
+
+    def startup_open_loops_summary(self) -> dict:
+        tasks = self.list_incomplete_tasks()
+        blocked_builds = [t for t in tasks if t.get('status') == 'blocked' or t.get('task_type') == 'blocking']
+        partial_integrations = [
+            t for t in tasks
+            if str((t.get('metadata') or {}).get('integration_state', '')).lower() in ('partial', 'incomplete')
+        ]
+        unverified_apis = [
+            t for t in tasks
+            if str((t.get('metadata') or {}).get('api_verified', '')).lower() in ('false', '0', '')
+            and str((t.get('metadata') or {}).get('kind', '')).lower() == 'api'
+        ]
+        summary = {
+            'generated_at': utc_now_iso(),
+            'incomplete_tasks_count': len(tasks),
+            'blocked_builds_count': len(blocked_builds),
+            'partial_integrations_count': len(partial_integrations),
+            'unverified_apis_count': len(unverified_apis),
+            'incomplete_tasks': tasks[:50],
+            'blocked_builds': blocked_builds[:50],
+            'partial_integrations': partial_integrations[:50],
+            'unverified_apis': unverified_apis[:50],
+        }
+        self.step_commit('boot', 'startup open-loop summary surfaced', {
+            'counts': {
+                'incomplete': len(tasks),
+                'blocked_builds': len(blocked_builds),
+                'partial_integrations': len(partial_integrations),
+                'unverified_apis': len(unverified_apis),
+            }
+        })
+        return summary
+
+    def update_task_progress(self, task_id: str, note: str = '') -> None:
+        now = utc_now_iso()
+        if self._has_remote():
+            # fetch metadata first
+            rows = self._rest('GET', 'tasks', query=parse.urlencode({'select':'metadata','id':f'eq.{task_id}'})) or []
+            md = (rows[0].get('metadata') if rows else {}) or {}
+            md['last_progress_at'] = now
+            if note:
+                md['last_progress_note'] = note
+            self._rest('PATCH', 'tasks', {'metadata': md, 'updated_at': now}, query=f'id=eq.{task_id}')
+            return
+
+        st = self._local_read()
+        for t in st['tasks']:
+            if t.get('id') == task_id:
+                md = t.get('metadata') or {}
+                md['last_progress_at'] = now
+                if note:
+                    md['last_progress_note'] = note
+                t['metadata'] = md
+                t['updated_at'] = now
+                break
+        self._local_write_atomic(st)
+
+    def reevaluate_open_loops(self, stale_hours: int = 6) -> dict:
+        tasks = self.list_incomplete_tasks()
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=stale_hours)
+        stalled = []
+        infra_confirmation_needed = []
+        credential_prompts = []
+
+        def _parse_iso(v: str):
+            try:
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except Exception:
+                return None
+
+        for t in tasks:
+            md = t.get('metadata') or {}
+            lp = _parse_iso(str(md.get('last_progress_at') or t.get('updated_at') or ''))
+            if lp is None or lp <= cutoff:
+                stalled.append(t)
+
+            if str(md.get('kind', '')).lower() in ('infrastructure', 'infra'):
+                infra_confirmation_needed.append({
+                    'task_id': t.get('id'),
+                    'title': t.get('title'),
+                    'prompt': f"Infrastructure task stalled/active: '{t.get('title')}'. Please confirm current infra status before stalling further.",
+                })
+
+            if md.get('requires_credentials'):
+                scopes = md.get('required_scopes') or []
+                credential_prompts.append({
+                    'task_id': t.get('id'),
+                    'title': t.get('title'),
+                    'prompt': 'Credentials required to proceed.',
+                    'required_scopes': scopes,
+                })
+
+        if stalled:
+            self.step_commit('significant_step', 'open-loop reevaluation found stalled tasks', {
+                'stalled_count': len(stalled),
+                'stale_hours': stale_hours,
+            })
+
+        return {
+            'generated_at': utc_now_iso(),
+            'stale_hours': stale_hours,
+            'stalled_count': len(stalled),
+            'stalled_tasks': stalled[:100],
+            'ask_for_direction': len(stalled) > 0,
+            'infra_confirmation_needed': infra_confirmation_needed,
+            'credential_prompts': credential_prompts,
+        }
+
 def diagnose_local_architecture() -> dict:
     workspace = Path('/home/grant/.openclaw/workspace')
     sessions_dir = Path('/home/grant/.openclaw/agents/main/sessions')

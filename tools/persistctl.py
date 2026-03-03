@@ -28,6 +28,15 @@ def main():
     p = sub.add_parser('shutdown')
     p.add_argument('--payload', default='{}')
 
+    sub.add_parser('startup-summary')
+
+    p = sub.add_parser('reevaluate')
+    p.add_argument('--stale-hours', type=int, default=6)
+
+    p = sub.add_parser('task-progress')
+    p.add_argument('--id', required=True)
+    p.add_argument('--note', default='')
+
     p = sub.add_parser('task-add')
     p.add_argument('--title', required=True)
     p.add_argument('--details', default='')
@@ -102,6 +111,16 @@ def main():
             blockers=json.loads(args.blockers),
             open_loops=json.loads(args.open_loops),
         )
+        print(json.dumps({'ok': True}, indent=2))
+        return
+    if args.cmd == 'startup-summary':
+        print(json.dumps(client.startup_open_loops_summary(), indent=2))
+        return
+    if args.cmd == 'reevaluate':
+        print(json.dumps(client.reevaluate_open_loops(stale_hours=args.stale_hours), indent=2))
+        return
+    if args.cmd == 'task-progress':
+        client.update_task_progress(args.id, args.note)
         print(json.dumps({'ok': True}, indent=2))
         return
     if args.cmd == 'reflect-eod':

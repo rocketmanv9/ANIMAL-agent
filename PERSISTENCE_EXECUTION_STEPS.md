@@ -11,9 +11,10 @@ python3 tools/persistctl.py diagnose
 # file: persistence/001_persistence_schema.sql
 ```
 
-## 3) Boot load (middleware)
+## 3) Boot load (middleware) + mandatory open-loop summary
 ```bash
 python3 tools/persistctl.py boot
+python3 tools/persistctl.py startup-summary
 ```
 
 ## 4) Commit significant step
@@ -39,10 +40,16 @@ python3 tools/persistctl.py task-add --title "Run nightly marketing checks" --ty
 python3 tools/persistctl.py task-add --title "Confirm infra migration applied" --type blocking --depends-on "<task-id>"
 ```
 
-## 7) Resurface incomplete tasks
+## 7) Resurface + reevaluate open loops (every 6h)
 ```bash
 python3 tools/persistctl.py resurface
+python3 tools/persistctl.py reevaluate --stale-hours 6
 ```
+
+If reevaluate returns:
+- `ask_for_direction=true` → ask user for direction immediately.
+- `infra_confirmation_needed` entries → ask for infra status confirmation before stalling.
+- `credential_prompts` entries → prompt clearly for required credentials/scopes.
 
 ## 8) Daily + weekly reflections
 ```bash

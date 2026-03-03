@@ -1,0 +1,6 @@
+# Sample cron entries (local machine)
+# every 30 minutes: resurface incomplete tasks
+*/30 * * * * cd /home/grant/.openclaw/workspace && bash tools/persistence_scheduler.sh >> /tmp/persist_scheduler.log 2>&1
+
+# end-of-day reflection reminder (9:30 PM)
+30 21 * * * cd /home/grant/.openclaw/workspace && python3 tools/persistctl.py step --summary "EOD reflection due" --payload '{"kind":"reflection_prompt"}' >> /tmp/persist_reflection.log 2>&1

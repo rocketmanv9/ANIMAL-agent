@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -31,6 +32,7 @@ class PersistConfig:
     service_key: Optional[str]
     agent_name: str = 'ANIMAL'
     local_fallback_path: Path = Path('/home/grant/.openclaw/workspace/.openclaw/persist_fallback.json')
+    local_queue_path: Path = Path('/home/grant/.openclaw/workspace/.openclaw/persist_queue.jsonl')
 
     @staticmethod
     def from_env(agent_name: str = 'ANIMAL') -> 'PersistConfig':
@@ -44,6 +46,12 @@ class PersistConfig:
 class PersistenceClient:
     def __init__(self, cfg: PersistConfig):
         self.cfg = cfg
+        self.log = logging.getLogger('persist')
+        if not self.log.handlers:
+            h = logging.FileHandler('/home/grant/.openclaw/workspace/.openclaw/persist.log')
+            h.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+            self.log.addHandler(h)
+            self.log.setLevel(logging.INFO)
 
     # ---------- low-level ----------
     def _has_remote(self) -> bool:
@@ -99,12 +107,42 @@ class PersistenceClient:
             tmp = tf.name
         os.replace(tmp, p)
 
+
+    def _enqueue_write(self, method: str, table: str, payload: Optional[dict], query: str):
+        q = self.cfg.local_queue_path
+        q.parent.mkdir(parents=True, exist_ok=True)
+        with q.open('a', encoding='utf-8') as f:
+            f.write(json.dumps({'ts': utc_now_iso(), 'method': method, 'table': table, 'payload': payload, 'query': query}) + '\n')
+        self.log.warning(f'queued write: {method} {table}')
+
+    def _flush_queue(self):
+        q = self.cfg.local_queue_path
+        if not self._has_remote() or not q.exists():
+            return {'flushed': 0}
+        lines = q.read_text(encoding='utf-8').splitlines()
+        if not lines:
+            return {'flushed': 0}
+        remaining = []
+        flushed = 0
+        for ln in lines:
+            try:
+                item = json.loads(ln)
+                self._rest(item['method'], item['table'], item.get('payload'), item.get('query',''))
+                flushed += 1
+            except Exception:
+                remaining.append(ln)
+        q.write_text(('\n'.join(remaining) + ('\n' if remaining else '')), encoding='utf-8')
+        self.log.info(f'queue flush: {flushed} flushed, {len(remaining)} remaining')
+        return {'flushed': flushed, 'remaining': len(remaining)}
+
     # ---------- middleware actions ----------
     def boot_load(self) -> dict:
+        q = self._flush_queue()
         summary = {
             'agent_name': self.cfg.agent_name,
             'loaded_at': utc_now_iso(),
             'source': 'remote' if self._has_remote() else 'local_fallback',
+            'queue_flush': q,
         }
         self.step_commit('boot', 'boot load', {'source': summary['source']})
         return summary
@@ -112,12 +150,22 @@ class PersistenceClient:
     def step_commit(self, step_type: str, summary: str, payload: Optional[dict] = None) -> None:
         payload = payload or {}
         if self._has_remote():
-            self._rest('POST', 'execution_steps', {
-                'agent_name': self.cfg.agent_name,
-                'step_type': step_type,
-                'summary': summary,
-                'payload': payload,
-            })
+            try:
+                self._rest('POST', 'execution_steps', {
+                    'agent_name': self.cfg.agent_name,
+                    'step_type': step_type,
+                    'summary': summary,
+                    'payload': payload,
+                })
+                self.log.info(f'write ok: execution_steps {step_type}')
+            except Exception as e:
+                self.log.error(f'write fail execution_steps: {e}')
+                self._enqueue_write('POST', 'execution_steps', {
+                    'agent_name': self.cfg.agent_name,
+                    'step_type': step_type,
+                    'summary': summary,
+                    'payload': payload,
+                }, '')
             return
 
         st = self._local_read()
@@ -137,13 +185,24 @@ class PersistenceClient:
         if self._has_remote():
             # upsert by agent_name via REST conflict target
             q = parse.urlencode({'on_conflict': 'agent_name'})
-            self._rest('POST', 'working_memory_buffers', {
+            try:
+                self._rest('POST', 'working_memory_buffers', {
                 'agent_name': self.cfg.agent_name,
                 'current_sprint': current_sprint,
                 'today_tasks': today_tasks,
                 'blocking_issues': blockers,
                 'open_loops': open_loops,
-            }, query=q)
+                }, query=q)
+                self.log.info('write ok: working_memory_buffers upsert')
+            except Exception as e:
+                self.log.error(f'write fail working_memory_buffers: {e}')
+                self._enqueue_write('POST', 'working_memory_buffers', {
+                    'agent_name': self.cfg.agent_name,
+                    'current_sprint': current_sprint,
+                    'today_tasks': today_tasks,
+                    'blocking_issues': blockers,
+                    'open_loops': open_loops,
+                }, q)
             return
 
         st = self._local_read()
@@ -171,7 +230,12 @@ class PersistenceClient:
             'metadata': metadata or {},
         }
         if self._has_remote():
-            self._rest('POST', 'tasks', row)
+            try:
+                self._rest('POST', 'tasks', row)
+                self.log.info('write ok: tasks insert')
+            except Exception as e:
+                self.log.error(f'write fail tasks insert: {e}')
+                self._enqueue_write('POST', 'tasks', row, '')
             return
 
         st = self._local_read()

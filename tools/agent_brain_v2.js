@@ -339,8 +339,11 @@ class AgentBrain {
       if (job) {
         hadWork = true;
         try {
-          // Placeholder job executor
           await this.appendMemory('job_queue', 'decision', `Executing job ${job.id}:${job.job_type}`, { payload: job.payload });
+          // Simulated executors
+          if (job.job_type === 'forced_fail') {
+            throw new Error('forced_fail simulated error');
+          }
           await this.completeJob(job.id);
           await this.logHealth('info', 'job_queue', 'job completed', { job_id: job.id, type: job.job_type });
         } catch (e) {

@@ -266,6 +266,27 @@ class AgentBrain {
     return { model: simple.model_name, reason: 'simple_goal_prefers_cheaper_faster' };
   }
 
+
+  async credentialPrompts() {
+    const r = await this.client.query(
+      `select id,title,description,metadata from tasks
+       where coalesce(status,'todo') in ('todo','open','doing','in_progress','blocked')`
+    );
+    const prompts = [];
+    for (const t of r.rows) {
+      const md = t.metadata || {};
+      if (md.requires_credentials) {
+        prompts.push({
+          task_id: t.id,
+          title: t.title,
+          required_scopes: md.required_scopes || [],
+          prompt: `Credentials required for task '${t.title}'. Provide scopes: ${(md.required_scopes||[]).join(', ')}`,
+        });
+      }
+    }
+    return prompts;
+  }
+
   async openLoopsSummary() {
     const blocked = await this.client.query(`select id,title from tasks where coalesce(status,'todo')='blocked' order by priority asc limit 20`);
     const overdue = await this.client.query(`select id,title from tasks where coalesce(status,'todo') in ('todo','open','doing','in_progress','blocked') and coalesce(due_ts,due_at) < now() order by priority asc limit 20`);
@@ -345,8 +366,13 @@ class AgentBrain {
         await this.logHealth('warning', 'open_loops', 'blocked tasks require user input', { blocked: loops.blocked.slice(0,5) });
       }
 
-      await this.logHealth('info', 'heartbeat', 'tick complete', { hadWork });
-      return { hadWork, loops };
+      const credPrompts = await this.credentialPrompts();
+      if (credPrompts.length) {
+        await this.logHealth('warning', 'credentials', 'credentials required for pending tasks', { prompts: credPrompts.slice(0,5) });
+      }
+
+      await this.logHealth('info', 'heartbeat', 'tick complete', { hadWork, credential_prompts: credPrompts.length });
+      return { hadWork, loops, credential_prompts: credPrompts };
     } finally {
       await this.releaseHeartbeatLock();
     }
@@ -382,10 +408,20 @@ class AgentBrain {
       ],
     };
 
-    await this.client.query(
-      `insert into reflections(period, content, decisions) values('weekly',$1,$2)`,
-      [content, decisions]
-    );
+    const hasPeriod = await this.hasColumn('reflections','period');
+    if (hasPeriod) {
+      await this.client.query(
+        `insert into reflections(period, content, decisions) values('weekly',$1,$2)`,
+        [content, decisions]
+      );
+    } else {
+      const periodKey = new Date().toISOString().slice(0,10);
+      await this.client.query(
+        `insert into reflections(agent_name, period_type, period_key, wins, misses, carry_forward)
+         values($1,'weekly',$2,$3,$4,$5)`,
+        [this.agentId, periodKey, content, '', decisions]
+      );
+    }
 
     if (failures > 5 || blockedCount > 0) {
       await this.createTask('Weekly architecture improvement', content, 2, null, 'weekly');

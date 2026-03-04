@@ -46,7 +46,18 @@ export default function Home() {
 
   return (
     <main style={{ padding: 14, maxWidth: 1200, margin: '0 auto' }}>
-      <h1 style={{ margin: '8px 0 14px 0' }}>ANIMAL Command Center</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <h1 style={{ margin: '8px 0 14px 0' }}>ANIMAL Command Center</h1>
+        <button
+          onClick={async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+          }}
+          style={{ padding: '8px 10px', borderRadius: 8 }}
+        >
+          Logout
+        </button>
+      </div>
       <p style={{ marginTop: 0, color: '#b6c2f5' }}>
         Tools, open loops, health, and direct Clawbot requests.
       </p>

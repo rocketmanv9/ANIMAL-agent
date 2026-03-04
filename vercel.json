@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd animal-ui && npm install && npm run build",
+  "installCommand": "cd animal-ui && npm install",
+  "outputDirectory": "animal-ui/.next",
+  "framework": "nextjs"
+}
